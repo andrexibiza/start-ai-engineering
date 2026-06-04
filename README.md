@@ -2,38 +2,13 @@
 
 ## A complete guide to start and improve in AI engineering in 2026 without ANY background in the field and stay up-to-date with the latest news and state-of-the-art techniques!
 
-**What this is.** A practical 2026 roadmap into AI engineering, organized by how you like to learn: videos, articles, books, docs, courses, and real projects. Most resources are free.
+This guide is intended for anyone with zero or a small background in programming, AI, or machine learning who wants to become a strong AI engineer in 2026. It is organized by how you like to learn: videos, articles, books, docs, courses, and real projects.
 
-**Who this is for.** This roadmap is for people who want to become better AI engineers, not merely better agentic coders. Coding agents can write code, scaffold apps, and speed up almost every step, but AI engineering is the judgment layer behind the work: deciding what to build, what architecture fits, how to evaluate it, where it will fail, and whether it is reliable enough to ship.
+There is no single correct order to follow, but a classic path is from top to bottom. If you dislike books, skip them. If you do not want to follow an online course, skip that too. With enough motivation, projects, and repetition, you can absolutely learn this field.
 
-**What AI engineering means in 2026.** In 2026, that means going well past prompting. You need context engineering, Retrieval-Augmented Generation (RAG), tools and the Model Context Protocol (MCP), workflow and agent design, evaluations, observability, harnesses, deployment, security, and a working understanding of reasoning models.
+Most resources listed here are free. Paid resources are clearly labelled, and some paid course and book links are affiliate links that support this guide at no extra cost to you. Thank you, and have fun learning!
 
-**Where coding agents fit.** Agentic coding tools like Codex, Claude Code, Cursor, and similar agents can help you build almost anything faster. This guide assumes you will use them. But this is not a repo about outsourcing your thinking to an agent. It is about using those tools while building the foundations, taste, and decision-making ability to become a true AI engineer.
-
-**Learning philosophy.** This guide, and our courses, prioritize learning by building. I learned AI engineering by building, and I now interview and hire AI engineers for consulting work at Towards AI, so this guide is biased toward the decision-making skills I actually look for. You can learn a lot alone with coding agents, but structure and expert feedback help you turn projects into true expertise instead of a pile of fragile demos.
-
-**Default path.** There is no single correct order. If you dislike books, skip them. If you learn best through videos, start there. If you want to get job-ready faster, bias toward code, docs, and shipped projects. A reasonable default path is:
-
-1. Watch a few foundational videos to pick up vocabulary and intuition.
-2. Pick one free course and one framework whose docs you commit to reading end to end.
-3. Pick one or two books to build a solid foundation you can return to when the tools change.
-4. Optionally take one or two advanced applied courses with real projects, especially if you want a structured path before breaking things on your own.
-5. Build two or three small but real projects that break in interesting ways.
-6. Add evaluations, tracing, and deployment before you call anything production-ready.
-
-**Where this gets you.** After that, you should have the foundations of a solid AI engineer ready for many entry-level or transition roles. Most importantly, keep learning and keep an open mind. This field changes fast, and the best engineers stay curious instead of getting religious about one model, framework, or workflow.
-
-**Personalize it with an agent.** You can also use this guide with your favorite AI agent. Paste the prompt below into Codex, Claude Code, ChatGPT, Cursor, or another assistant, then tell it how you like to learn:
-
-```text
-Use this repo as my AI engineering roadmap: https://github.com/louisfb01/start-ai-engineering
-
-Create a personalized learning plan for me. First ask about my background, coding level, available time, budget, preferred learning style, and goals. Then choose the most relevant resources from the repo, explain why you picked them, order them from easiest to hardest, and turn them into a weekly plan with projects, checkpoints, and what I should be able to build after each stage.
-```
-
-**Paid resources and affiliate links.** Resources marked *(Paid)* are clearly labelled. Almost everything else is free. Some paid course and book links are affiliate links, which support this guide at no extra cost to you.
-
-**Difficulty guide.** Resources use compact markers from 1️⃣ to 🔟. 1️⃣ means absolute beginner, like an intro Python course; 3️⃣ is beginner-friendly AI vocabulary; 5️⃣ is practical builder material you can apply in a project; 7️⃣ is production engineering depth; 9️⃣ is advanced systems or research; and 🔟 is the kind of senior-level paper or technique you may want to revisit after you have shipped a few systems. Lower numbers first, scars later.
+Don't be afraid to repeat videos, learn from multiple sources, and build messy projects. Repetition and debugging are where the real learning happens.
 
 Maintainer: [louisfb01](https://github.com/louisfb01), also active on [YouTube](https://www.youtube.com/@whatsai), [the What's AI Podcast](https://www.louisbouchard.ai/podcast/), and [my personal newsletter](https://louisbouchard.substack.com/) if you want to see and hear more about AI.
 
@@ -45,7 +20,7 @@ Maintainer: [louisfb01](https://github.com/louisfb01), also active on [YouTube](
 
 **If this guide helps you, please star the repo and share it. That is the main way other builders find it.**
 
-### Start here: AI engineering is decision making
+### Want to know what this guide is about? Start with this video:
 
 [<img src="assets/ai-engineering-foundations.webp" width="512"/>](https://youtu.be/ljOwBCdiHmg)
 
@@ -57,7 +32,7 @@ Watch [AI Engineering Foundations: What Developers Actually Need to Know Today](
 
 ## Table of Contents
 
-* [Prerequisites](#prerequisites)
+* [Prerequisites and learning path](#prerequisites)
 * [Start with short YouTube and video introductions](#youtubevideos)
 * [Books and long-form reading](#readers)
 * [Online courses](#courses)
@@ -84,7 +59,48 @@ Watch [AI Engineering Foundations: What Developers Actually Need to Know Today](
 
 ----
 
-## Prerequisites<a name="prerequisites"></a>
+## Prerequisites and learning path<a name="prerequisites"></a>
+
+Before you start collecting resources, keep the goal clear: this guide is for becoming a better AI engineer, not merely a better agentic coder.
+
+### Quick LLM and coding-agent warning
+
+Coding agents like Codex, Claude Code, Cursor, and similar tools can write code, scaffold apps, and speed up almost every step. You should use them. But AI engineering is the judgment layer behind the work: deciding what to build, what architecture fits, how to evaluate it, where it will fail, and whether it is reliable enough to ship.
+
+This guide is not about outsourcing your thinking to an agent. It is about using those tools while building the foundations, taste, and decision-making ability to become a true AI engineer.
+
+### What AI engineering means in 2026
+
+In 2026, AI engineering goes well past prompting. You need context engineering, Retrieval-Augmented Generation (RAG), tools and the Model Context Protocol (MCP), workflow and agent design, evaluations, observability, harnesses, deployment, security, and a working understanding of reasoning models.
+
+That is also why this guide, and our courses, prioritize learning by building. I learned AI engineering by building, and I now interview and hire AI engineers for consulting work at Towards AI, so this guide is biased toward the decision-making skills I actually look for. You can learn a lot alone with coding agents, but structure and expert feedback help you turn projects into true expertise instead of a pile of fragile demos.
+
+### Suggested learning path
+
+There is no single correct order. If you want a default path, I would do this:
+
+1. Watch a few foundational videos to pick up vocabulary and intuition.
+2. Pick one free course and one framework whose docs you commit to reading end to end.
+3. Pick one or two books to build a solid foundation you can return to when the tools change.
+4. Optionally take one or two advanced applied courses with real projects, especially if you want a structured path before breaking things on your own.
+5. Build two or three small but real projects that break in interesting ways.
+6. Add evaluations, tracing, and deployment before you call anything production-ready.
+
+After that, you should have the foundations of a solid AI engineer ready for many entry-level or transition roles. Most importantly, keep learning and keep an open mind. This field changes fast, and the best engineers stay curious instead of getting religious about one model, framework, or workflow.
+
+### Difficulty guide
+
+Resources use compact markers from 1️⃣ to 🔟. 1️⃣ means absolute beginner, like an intro Python course; 3️⃣ is beginner-friendly AI vocabulary; 5️⃣ is practical builder material you can apply in a project; 7️⃣ is production engineering depth; 9️⃣ is advanced systems or research; and 🔟 is the kind of senior-level paper or technique you may want to revisit after you have shipped a few systems. Lower numbers first, scars later.
+
+### Personalize this roadmap with an AI agent
+
+You can use this guide with your favorite AI agent. Paste the prompt below into Codex, Claude Code, ChatGPT, Cursor, or another assistant, then tell it how you like to learn:
+
+```text
+Use this repo as my AI engineering roadmap: https://github.com/louisfb01/start-ai-engineering
+
+Create a personalized learning plan for me. First ask about my background, coding level, available time, budget, preferred learning style, and goals. Then choose the most relevant resources from the repo, explain why you picked them, order them from easiest to hardest, and turn them into a weekly plan with projects, checkpoints, and what I should be able to build after each stage.
+```
 
 ### If you are brand new to code
 
