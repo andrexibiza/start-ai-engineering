@@ -41,7 +41,7 @@ Maintainer: [louisfb01](https://github.com/louisfb01), also active on [YouTube](
 [![LinkedIn: Louis-François Bouchard](https://img.shields.io/badge/LinkedIn-Louis--Fran%C3%A7ois%20Bouchard-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/whats-ai/)
 [![YouTube: What's AI](https://img.shields.io/badge/YouTube-What's%20AI-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@WhatsAI)
 
-***Tag Louis-François Bouchard on [X](https://x.com/Whats_AI) or [LinkedIn](https://www.linkedin.com/in/whats-ai/) and Louie on [LinkedIn](https://www.linkedin.com/in/louie-peters/) if you share this guide, and feel free to suggest additions through pull requests.***
+***Tag Louis-François Bouchard on [X](https://x.com/Whats_AI) or [LinkedIn](https://www.linkedin.com/in/whats-ai/) if you share this guide, and feel free to suggest additions through pull requests.***
 
 **If this guide helps you, please star the repo and share it. That is the main way other builders find it.**
 
@@ -309,7 +309,7 @@ When reasoning models help, when they hurt, how to set thinking budgets, how to 
 
 ### Best resources
 
-* 4️⃣ [Towards AI Newsletter issues](https://newsletter.towardsai.net/) - Louie Peters covers almost every major reasoning model release with benchmarks and opinion.
+* 4️⃣ [Towards AI Newsletter issues](https://newsletter.towardsai.net/) - Weekly coverage of major reasoning model releases with benchmarks and opinion.
 * 5️⃣ [Anthropic: Prompt caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) - Usually where reasoning costs get controlled in production.
 * 6️⃣ [Anthropic: Building with extended thinking](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking) - Official docs on how to use Claude's thinking mode correctly.
 * 7️⃣ [OpenAI: Run long horizon tasks with Codex](https://developers.openai.com/blog/run-long-horizon-tasks-with-codex) - Long-running reasoning workflows in practice.
@@ -721,7 +721,7 @@ The social layer where most of the real-time knowledge actually moves.
 
 ### Newsletters
 
-* 3️⃣ [Towards AI Newsletter](https://newsletter.towardsai.net/) - Louie Peters's weekly "What happened this week in AI," with technical depth, benchmarks, and personal opinion.
+* 3️⃣ [Towards AI Newsletter](https://newsletter.towardsai.net/) - Weekly "What happened this week in AI" coverage with technical depth, benchmarks, and opinion.
 * 3️⃣ [Last Week in AI](https://lastweekin.ai/) - Andrey Kurenkov and Jeremie Harris. Weekly news roundup.
 * 3️⃣ [The Batch](https://www.deeplearning.ai/the-batch/) - Andrew Ng's weekly summary of research and industry.
 * 4️⃣ [Louis-François Bouchard's Substack](https://louisbouchard.substack.com/) - Short essays on harness engineering, agents, and the practice of AI engineering.
@@ -777,7 +777,6 @@ The social layer where most of the real-time knowledge actually moves.
 On Twitter/X and LinkedIn, most of the useful real-time signal comes from a relatively small group of practitioners. A good starter list:
 
 * 4️⃣ [Louis-François Bouchard](https://x.com/Whats_AI) - Co-founder and Chief Technology Officer, Towards AI. Harness engineering, agents, AI education.
-* 4️⃣ [Louie Peters](https://www.linkedin.com/in/louie-peters/) - Co-founder and Chief Executive Officer, Towards AI. Weekly "What happened this week in AI" newsletter on LinkedIn.
 * 4️⃣ [Andrew Ng](https://x.com/AndrewYNg) - DeepLearning.AI founder, weekly Batch newsletter.
 * 4️⃣ [swyx (Shawn Wang)](https://x.com/swyx) - Latent Space, AI engineer community builder.
 * 4️⃣ [Harrison Chase](https://x.com/hwchase17) - LangChain founder.
@@ -849,7 +848,7 @@ AI engineering in 2026 is a systems craft. Learn enough theory to avoid magical 
 
 If you found this guide useful, please star the repo and share it with one person who could use it. That is how it keeps reaching the right people.
 
-***Tag Louis-François Bouchard on [X](https://x.com/Whats_AI) or [LinkedIn](https://www.linkedin.com/in/whats-ai/) and Louie on [LinkedIn](https://www.linkedin.com/in/louie-peters/) if you share this guide.***
+***Tag Louis-François Bouchard on [X](https://x.com/Whats_AI) or [LinkedIn](https://www.linkedin.com/in/whats-ai/) if you share this guide.***
 
 **If you'd like to support our work**, joining any [Towards AI Academy](https://academy.towardsai.net/?ref=1f9b29) course directly funds more free content like this one.
 
