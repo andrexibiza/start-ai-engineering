@@ -685,7 +685,7 @@ The social layer where most of the real-time knowledge actually moves.
 ### Discord servers to join
 
 * 2️⃣ [Towards AI Discord](https://discord.gg/YPsA3s3aw2) - 80,000+ builders, direct access to the Towards AI team, weekly events, channels for RAG, agents, fine-tuning, and job search.
-* 2️⃣ [Learn AI Together](https://discord.gg/learnaitogether) - Louis-François Bouchard's server for AI enthusiasts, study groups, and Kaggle teammates.
+* 2️⃣ [Learn AI Together](https://discord.gg/learnaitogether) - Louis-François Bouchard's nearly 100,000-member server for AI enthusiasts, study groups, and Kaggle teammates.
 * 3️⃣ [Hugging Face Discord](https://huggingface.co/join/discord) - Home for the open-source AI ecosystem. Channels for every major model family and library.
 * 3️⃣ [LangChain Discord](https://discord.gg/langchain) - Official community for LangChain and LangGraph users.
 * 3️⃣ [LlamaIndex Discord](https://discord.gg/llamaindex) - Active channels on RAG, agents, and workflows.
