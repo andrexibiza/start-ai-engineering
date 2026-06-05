@@ -755,6 +755,7 @@ The social layer where most of the real-time knowledge actually moves.
 * 3️⃣ [Lex Fridman Podcast](https://lexfridman.com/podcast/) - Occasional AI episodes with researchers and founders.
 * 4️⃣ [The What's AI Podcast](https://www.louisbouchard.ai/podcast/) - Louis-François Bouchard. Interviews with AI builders and researchers.
 * 4️⃣ [Latent Space](https://www.latent.space/podcast) - swyx and Alessio Fanelli. Deep interviews with practitioners shipping real systems.
+* 4️⃣ [ThursdAI](https://thursdai.news/) - Alex Volkov's weekly live show, podcast, and newsletter breaking down major AI news with builders. Strong for model releases, open-source AI, tooling, and practical context on what changed this week.
 * 5️⃣ [Machine Learning Street Talk](https://www.youtube.com/@MachineLearningStreetTalk) - Tim Scarfe. Long-form research conversations.
 
 ### Practitioner blogs worth bookmarking
@@ -799,6 +800,7 @@ On Twitter/X and LinkedIn, most of the useful real-time signal comes from a rela
 * 4️⃣ [Harrison Chase](https://x.com/hwchase17) - LangChain founder.
 * 4️⃣ [Omar Sanseviero](https://x.com/osanseviero) - Hugging Face, open-source LLMs.
 * 4️⃣ [Logan Kilpatrick](https://x.com/OfficialLoganK) - Google DeepMind, working on Google AI Studio, the Gemini API, and Kaggle; formerly led developer relations at OpenAI. Useful for Gemini developer ecosystem updates, AI Studio workflows, and fast AI app prototyping.
+* 4️⃣ [Alex Volkov](https://x.com/altryne) - Host and curator of ThursdAI, AI Evangelist at Weights & Biases, and a strong real-time source for weekly model releases, open-source AI, tooling, and builder commentary.
 * 5️⃣ [Simon Willison](https://x.com/simonw) - Near-daily practical AI engineering posts. Also active on [Mastodon](https://fedi.simonwillison.net/@simon) and his [blog](https://simonwillison.net/).
 * 5️⃣ [Hamel Husain](https://x.com/HamelHusain) - Evals and AI consulting notes.
 * 5️⃣ [Jason Liu](https://x.com/jxnlco) - RAG, consulting, structured outputs.
