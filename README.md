@@ -798,6 +798,7 @@ On Twitter/X and LinkedIn, most of the useful real-time signal comes from a rela
 * 4️⃣ [swyx (Shawn Wang)](https://x.com/swyx) - Latent Space, AI engineer community builder.
 * 4️⃣ [Harrison Chase](https://x.com/hwchase17) - LangChain founder.
 * 4️⃣ [Omar Sanseviero](https://x.com/osanseviero) - Hugging Face, open-source LLMs.
+* 4️⃣ [Logan Kilpatrick](https://x.com/OfficialLoganK) - Google DeepMind, working on Google AI Studio, the Gemini API, and Kaggle; formerly led developer relations at OpenAI. Useful for Gemini developer ecosystem updates, AI Studio workflows, and fast AI app prototyping.
 * 5️⃣ [Simon Willison](https://x.com/simonw) - Near-daily practical AI engineering posts. Also active on [Mastodon](https://fedi.simonwillison.net/@simon) and his [blog](https://simonwillison.net/).
 * 5️⃣ [Hamel Husain](https://x.com/HamelHusain) - Evals and AI consulting notes.
 * 5️⃣ [Jason Liu](https://x.com/jxnlco) - RAG, consulting, structured outputs.
