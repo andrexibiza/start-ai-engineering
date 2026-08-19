@@ -1,0 +1,138 @@
+name: Repair Hermes PR 90293 xAI provider family
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/repair-pr90293-xai-family-trigger
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  repair:
+    name: Apply, test, and publish xAI provider-family compatibility
+    if: github.head_ref == 'automation/trigger-hermes-pr90293-xai-family'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TARGET_REPO: andrexibiza/hermes-agent
+      TARGET_BRANCH: fix/pr-90122-review-blockers
+      TARGET_SHA: c8478f7579f7ec86b11a66ec75902184580a3245
+      HELPER_REPO: andrexibiza/start-ai-engineering
+      PUBLISH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
+
+    steps:
+      - name: Publish run receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="Hermes #90293 xAI provider-family repair started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Require publication token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PUBLISH_TOKEN:-}" || {
+            echo "ARES_REVIEW_TOKEN is unavailable."
+            exit 1
+          }
+
+      - name: Check out exact target and helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --single-branch \
+            --branch "$TARGET_BRANCH" \
+            "https://github.com/${TARGET_REPO}.git" work
+          actual="$(git -C work rev-parse HEAD)"
+          if [[ "$actual" != "$TARGET_SHA" ]]; then
+            echo "Target branch moved: expected $TARGET_SHA, found $actual"
+            exit 1
+          fi
+          git clone --filter=blob:none --single-branch \
+            --branch main \
+            "https://github.com/${HELPER_REPO}.git" helper
+
+      - name: Apply and mechanically validate repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python helper/.github/scripts/repair_pr90293_xai_family.py work
+          cd work
+          git diff --check
+          python -m py_compile \
+            cron/scheduler.py \
+            tests/cron/test_model_pin_fallback_90089.py
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: '0.9.28'
+          enable-cache: true
+          cache-dependency-glob: |
+            work/pyproject.toml
+            work/uv.lock
+
+      - name: Run affected cron regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          uv python install 3.11
+          uv sync --locked --python 3.11 --extra all --extra dev
+          source .venv/bin/activate
+          python -m pytest -q \
+            tests/cron/test_model_pin_fallback_90089.py \
+            tests/cron/test_scheduler.py \
+            tests/cron/test_silent_worker_death_90089.py \
+            tests/cron/test_execution_ledger.py
+
+      - name: Commit and push repaired target
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git config user.name "Axl Ibiza"
+          git config user.email "andrexibiza@users.noreply.github.com"
+          git add cron/scheduler.py tests/cron/test_model_pin_fallback_90089.py
+          git commit -m "fix(cron): preserve same-service xAI fallback compatibility (#90293)"
+          new_sha="$(git rev-parse HEAD)"
+          remote="https://x-access-token:${PUBLISH_TOKEN}@github.com/${TARGET_REPO}.git"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${TARGET_SHA}" \
+            "$remote" "HEAD:refs/heads/${TARGET_BRANCH}"
+          echo "new_sha=$new_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish success receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEW_SHA: ${{ steps.publish.outputs.new_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="Hermes #90293 xAI provider-family repair passed affected cron suites and published commit \`${NEW_SHA}\`."
+
+      - name: Publish failure receipt
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="Hermes #90293 xAI provider-family repair failed. Logs: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
