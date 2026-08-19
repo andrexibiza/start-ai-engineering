@@ -1,0 +1,182 @@
+name: Repair Hermes PR 90122
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/repair-pr90122-trigger
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  repair:
+    name: Apply, test, and publish the reviewed repair
+    if: github.head_ref == 'automation/trigger-hermes-pr90122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_REPO: smfworks/hermes-agent
+      SOURCE_BRANCH: fix/cron-windows-worker-death-90089
+      SOURCE_SHA: 2b119d2869e7c413cc512cf434f32ecebf076a46
+      SOURCE_PR_REPO: NousResearch/hermes-agent
+      SOURCE_PR_NUMBER: '90122'
+      FALLBACK_REPO: andrexibiza/hermes-agent
+      FALLBACK_BRANCH: fix/pr-90122-review-blockers
+      FALLBACK_STAGING_SHA: 7f7a1fdfe0ef402d40ca970b24fd5f5f5c85f16f
+      HELPER_REPO: andrexibiza/heretic
+      HELPER_SHA: 40c7ef51c47fad69f669e9b6122733e3e63fa722
+      PUBLISH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
+
+    steps:
+      - name: Publish the observable run receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HELPER_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${HELPER_PR_NUMBER}/comments" \
+            -f body="Hermes #90122 repair run started: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Require the publication token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PUBLISH_TOKEN:-}" || {
+            echo "ARES_REVIEW_TOKEN is unavailable."
+            exit 1
+          }
+
+      - name: Check out the exact reviewed contributor head and transform
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --single-branch \
+            --branch "$SOURCE_BRANCH" \
+            "https://github.com/${SOURCE_REPO}.git" work
+          actual="$(git -C work rev-parse HEAD)"
+          if [[ "$actual" != "$SOURCE_SHA" ]]; then
+            echo "Contributor branch moved: expected $SOURCE_SHA, found $actual"
+            exit 1
+          fi
+
+          git clone --filter=blob:none "https://github.com/${HELPER_REPO}.git" helper
+          git -C helper checkout --detach "$HELPER_SHA"
+          python helper/.github/scripts/repair_pr90122.py work
+
+          cd work
+          git diff --check
+          python -m py_compile \
+            cron/executions.py \
+            cron/scheduler.py \
+            tests/cron/test_model_pin_fallback_90089.py \
+            tests/cron/test_silent_worker_death_90089.py
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: '0.9.28'
+          enable-cache: true
+          cache-dependency-glob: |
+            work/pyproject.toml
+            work/uv.lock
+
+      - name: Run focused cron regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          uv python install 3.11
+          uv sync --locked --python 3.11 --extra all --extra dev
+          source .venv/bin/activate
+          python -m pytest -q \
+            tests/cron/test_model_pin_fallback_90089.py \
+            tests/cron/test_silent_worker_death_90089.py \
+            tests/cron/test_execution_ledger.py
+
+      - name: Commit and publish the repair
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git config user.name "Axl Ibiza"
+          git config user.email "andrexibiza@users.noreply.github.com"
+          git add \
+            cron/executions.py \
+            cron/scheduler.py \
+            tests/cron/test_model_pin_fallback_90089.py \
+            tests/cron/test_silent_worker_death_90089.py
+          git commit -m "fix(cron): keep fallback routing atomic and preserve unknown outcomes (#90089)"
+          new_sha="$(git rev-parse HEAD)"
+
+          direct_remote="https://x-access-token:${PUBLISH_TOKEN}@github.com/${SOURCE_REPO}.git"
+          set +e
+          git push "$direct_remote" "HEAD:refs/heads/${SOURCE_BRANCH}"
+          direct_status=$?
+          set -e
+
+          if [[ $direct_status -eq 0 ]]; then
+            mode=original
+            published_url="https://github.com/${SOURCE_REPO}/commit/${new_sha}"
+            review_url="https://github.com/${SOURCE_PR_REPO}/pull/${SOURCE_PR_NUMBER}"
+          else
+            fallback_remote="https://x-access-token:${PUBLISH_TOKEN}@github.com/${FALLBACK_REPO}.git"
+            current_fallback="$(git ls-remote "$fallback_remote" "refs/heads/${FALLBACK_BRANCH}" | awk '{print $1}')"
+            if [[ "$current_fallback" != "$FALLBACK_STAGING_SHA" ]]; then
+              echo "Fallback branch advanced from staging SHA: $current_fallback"
+              exit 1
+            fi
+            git push \
+              --force-with-lease="refs/heads/${FALLBACK_BRANCH}:${current_fallback}" \
+              "$fallback_remote" "HEAD:refs/heads/${FALLBACK_BRANCH}"
+            mode=replacement
+            published_url="https://github.com/${FALLBACK_REPO}/commit/${new_sha}"
+            review_url="https://github.com/${SOURCE_PR_REPO}/compare/main...andrexibiza:${FALLBACK_BRANCH}?expand=1"
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "new_sha=$new_sha"
+            echo "published_url=$published_url"
+            echo "review_url=$review_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish success receipts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HELPER_PR_NUMBER: ${{ github.event.pull_request.number }}
+          MODE: ${{ steps.publish.outputs.mode }}
+          NEW_SHA: ${{ steps.publish.outputs.new_sha }}
+          PUBLISHED_URL: ${{ steps.publish.outputs.published_url }}
+          REVIEW_URL: ${{ steps.publish.outputs.review_url }}
+        run: |
+          set -euo pipefail
+          printf -v body 'Hermes #90122 repair published and validated.\n\nMode: %s\nCommit: `%s`\nPublished: %s\nReview/merge surface: %s\n\nValidation: modified-file `py_compile`, `git diff --check`, and focused model-fallback, silent-worker, and execution-ledger tests.' \
+            "$MODE" "$NEW_SHA" "$PUBLISHED_URL" "$REVIEW_URL"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${HELPER_PR_NUMBER}/comments" \
+            -f body="$body"
+
+          upstream_body="Both #90122 review blockers are implemented and GitHub-hosted validation passed. Published commit: ${PUBLISHED_URL}. Review/merge surface: ${REVIEW_URL}. Commit: \`${NEW_SHA}\`."
+          GH_TOKEN="$PUBLISH_TOKEN" gh api --method POST \
+            "repos/${SOURCE_PR_REPO}/issues/${SOURCE_PR_NUMBER}/comments" \
+            -f body="$upstream_body" || true
+
+      - name: Publish a failure receipt
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HELPER_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${HELPER_PR_NUMBER}/comments" \
+            -f body="Hermes #90122 repair run failed. Exact logs: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
