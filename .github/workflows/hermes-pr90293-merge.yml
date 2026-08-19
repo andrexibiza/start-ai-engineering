@@ -1,0 +1,160 @@
+name: Merge Hermes PR 90293
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/merge-pr90293-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    name: Verify exact head and merge upstream
+    if: github.head_ref == 'automation/trigger-hermes-pr90293-merge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
+      TARGET_REPO: NousResearch/hermes-agent
+      TARGET_PR: '90293'
+      TARGET_HEAD: e2f6661a44fcb92ae8d23561d543e9a434a58cb0
+
+    steps:
+      - name: Require maintainer token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || {
+            echo "ARES_REVIEW_TOKEN is unavailable."
+            exit 1
+          }
+
+      - name: Verify exact-head gates and merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["TARGET_REPO"]
+          pr_number = os.environ["TARGET_PR"]
+          expected_head = os.environ["TARGET_HEAD"]
+          api = "https://api.github.com"
+
+          def request(method, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  api + path,
+                  data=data,
+                  method=method,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "hermes-pr90293-merge-runner",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(
+                      f"GitHub API {method} {path} failed: {exc.code} {body}"
+                  ) from exc
+
+          pr_path = f"/repos/{repo}/pulls/{pr_number}"
+          pr = request("GET", pr_path)
+          if pr.get("state") != "open" or pr.get("merged"):
+              raise RuntimeError(f"PR is not open/unmerged: {pr.get('state')=} {pr.get('merged')=}")
+          actual_head = ((pr.get("head") or {}).get("sha") or "")
+          if actual_head != expected_head:
+              raise RuntimeError(
+                  f"PR head moved: expected {expected_head}, found {actual_head}"
+              )
+
+          for _ in range(10):
+              pr = request("GET", pr_path)
+              mergeable = pr.get("mergeable")
+              if mergeable is not None:
+                  break
+              time.sleep(2)
+          if pr.get("mergeable") is not True:
+              raise RuntimeError(
+                  f"PR is not mergeable at exact head: {pr.get('mergeable')=} "
+                  f"{pr.get('mergeable_state')=}"
+              )
+
+          query = urllib.parse.urlencode(
+              {"head_sha": expected_head, "event": "pull_request", "per_page": 100}
+          )
+          runs = request("GET", f"/repos/{repo}/actions/runs?{query}").get(
+              "workflow_runs", []
+          )
+          required = {
+              "CI",
+              "Docker Build, Test, and Publish",
+              "Nix flake check",
+          }
+          by_name = {}
+          for run in runs:
+              name = run.get("name")
+              if name in required:
+                  by_name[name] = run
+          missing = sorted(required - by_name.keys())
+          if missing:
+              raise RuntimeError(f"Missing exact-head workflows: {missing}")
+          failures = {
+              name: (run.get("status"), run.get("conclusion"), run.get("html_url"))
+              for name, run in by_name.items()
+              if run.get("status") != "completed" or run.get("conclusion") != "success"
+          }
+          if failures:
+              raise RuntimeError(f"Exact-head workflow gates are not green: {failures}")
+
+          merge = request(
+              "PUT",
+              f"/repos/{repo}/pulls/{pr_number}/merge",
+              {
+                  "sha": expected_head,
+                  "merge_method": "merge",
+                  "commit_title": (
+                      "fix(cron): keep fallback routing atomic and preserve "
+                      "unknown outcomes (#90089) (#90293)"
+                  ),
+                  "commit_message": (
+                      "Includes #90122 by @smfworks and preserves #90089 by "
+                      "@fooler64. Exact-head repair by @andrexibiza keeps "
+                      "provider/model fallback atomic, preserves verified "
+                      "same-service xAI credential transports, and "
+                      "terminalizes evidence-poor execution residue as "
+                      "immutable unknown."
+                  ),
+              },
+          )
+          if merge.get("merged") is not True:
+              raise RuntimeError(f"Merge API did not merge the PR: {merge}")
+          merge_sha = merge.get("sha")
+
+          comment = (
+              f"Merged exact head `{expected_head}` as `{merge_sha}` after CI, "
+              "Docker, and Nix all completed successfully. Merge commit mode "
+              "was used so #90122 / @smfworks provenance remains in history."
+          )
+          request(
+              "POST",
+              f"/repos/{repo}/issues/{pr_number}/comments",
+              {"body": comment},
+          )
+          print(json.dumps({"merged": True, "merge_sha": merge_sha}, indent=2))
+          PY
