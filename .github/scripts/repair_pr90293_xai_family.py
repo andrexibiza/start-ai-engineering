@@ -86,26 +86,28 @@ replace_once(
 )
 
 model_test = "tests/cron/test_model_pin_fallback_90089.py"
-new_test = dedent(
-    '''
-        def test_xai_oauth_pin_allows_same_service_api_key_route(self, tmp_path):
-            from hermes_cli.auth import AuthError
-
-            job = _base_job(model="grok-4.5", provider="xai-oauth")
-            success, _output, error, model_used, provider_used = _run_with_fallback(
-                job,
-                primary_provider="xai-oauth",
-                primary_raises=AuthError("xai oauth token expired"),
-                fallback_provider="xai",
-                fallback_model="grok-4.5",
-                tmp_path=tmp_path,
-            )
-
-            assert success is True, error
-            assert model_used == "grok-4.5"
-            assert provider_used == "xai"
-
-    '''
+new_test = (
+    "    def test_xai_oauth_pin_allows_same_service_api_key_route(\n"
+    "        self, tmp_path\n"
+    "    ):\n"
+    "        from hermes_cli.auth import AuthError\n"
+    "\n"
+    "        job = _base_job(model=\"grok-4.5\", provider=\"xai-oauth\")\n"
+    "        success, _output, error, model_used, provider_used = (\n"
+    "            _run_with_fallback(\n"
+    "                job,\n"
+    "                primary_provider=\"xai-oauth\",\n"
+    "                primary_raises=AuthError(\"xai oauth token expired\"),\n"
+    "                fallback_provider=\"xai\",\n"
+    "                fallback_model=\"grok-4.5\",\n"
+    "                tmp_path=tmp_path,\n"
+    "            )\n"
+    "        )\n"
+    "\n"
+    "        assert success is True, error\n"
+    "        assert model_used == \"grok-4.5\"\n"
+    "        assert provider_used == \"xai\"\n"
+    "\n"
 )
 replace_once(
     model_test,
