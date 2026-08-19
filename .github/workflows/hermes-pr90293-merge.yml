@@ -1,7 +1,7 @@
 name: Merge Hermes PR 90293
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
     paths:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   merge:
     name: Verify exact head and merge upstream
-    if: github.head_ref == 'automation/trigger-hermes-pr90293-merge'
+    if: github.event.pull_request.head.ref == 'automation/trigger-hermes-pr90293-merge'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -39,7 +39,6 @@ jobs:
           python - <<'PY'
           import json
           import os
-          import sys
           import time
           import urllib.error
           import urllib.parse
@@ -76,7 +75,10 @@ jobs:
           pr_path = f"/repos/{repo}/pulls/{pr_number}"
           pr = request("GET", pr_path)
           if pr.get("state") != "open" or pr.get("merged"):
-              raise RuntimeError(f"PR is not open/unmerged: {pr.get('state')=} {pr.get('merged')=}")
+              raise RuntimeError(
+                  f"PR is not open/unmerged: state={pr.get('state')} "
+                  f"merged={pr.get('merged')}"
+              )
           actual_head = ((pr.get("head") or {}).get("sha") or "")
           if actual_head != expected_head:
               raise RuntimeError(
@@ -85,14 +87,14 @@ jobs:
 
           for _ in range(10):
               pr = request("GET", pr_path)
-              mergeable = pr.get("mergeable")
-              if mergeable is not None:
+              if pr.get("mergeable") is not None:
                   break
               time.sleep(2)
           if pr.get("mergeable") is not True:
               raise RuntimeError(
-                  f"PR is not mergeable at exact head: {pr.get('mergeable')=} "
-                  f"{pr.get('mergeable_state')=}"
+                  "PR is not mergeable at exact head: "
+                  f"mergeable={pr.get('mergeable')} "
+                  f"state={pr.get('mergeable_state')}"
               )
 
           query = urllib.parse.urlencode(
@@ -106,21 +108,28 @@ jobs:
               "Docker Build, Test, and Publish",
               "Nix flake check",
           }
-          by_name = {}
-          for run in runs:
-              name = run.get("name")
-              if name in required:
-                  by_name[name] = run
+          by_name = {
+              run.get("name"): run
+              for run in runs
+              if run.get("name") in required
+          }
           missing = sorted(required - by_name.keys())
           if missing:
               raise RuntimeError(f"Missing exact-head workflows: {missing}")
           failures = {
-              name: (run.get("status"), run.get("conclusion"), run.get("html_url"))
+              name: (
+                  run.get("status"),
+                  run.get("conclusion"),
+                  run.get("html_url"),
+              )
               for name, run in by_name.items()
-              if run.get("status") != "completed" or run.get("conclusion") != "success"
+              if run.get("status") != "completed"
+              or run.get("conclusion") != "success"
           }
           if failures:
-              raise RuntimeError(f"Exact-head workflow gates are not green: {failures}")
+              raise RuntimeError(
+                  f"Exact-head workflow gates are not green: {failures}"
+              )
 
           merge = request(
               "PUT",
@@ -146,15 +155,17 @@ jobs:
               raise RuntimeError(f"Merge API did not merge the PR: {merge}")
           merge_sha = merge.get("sha")
 
-          comment = (
-              f"Merged exact head `{expected_head}` as `{merge_sha}` after CI, "
-              "Docker, and Nix all completed successfully. Merge commit mode "
-              "was used so #90122 / @smfworks provenance remains in history."
-          )
           request(
               "POST",
               f"/repos/{repo}/issues/{pr_number}/comments",
-              {"body": comment},
+              {
+                  "body": (
+                      f"Merged exact head `{expected_head}` as `{merge_sha}` "
+                      "after CI, Docker, and Nix all completed successfully. "
+                      "Merge commit mode preserved #90122 / @smfworks "
+                      "provenance in history."
+                  )
+              },
           )
           print(json.dumps({"merged": True, "merge_sha": merge_sha}, indent=2))
           PY
