@@ -1,0 +1,105 @@
+name: Generate Hermes PR 91042 lock
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/pr91042-lock-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate exact current-main lock closure
+    if: github.event.pull_request.head.ref == 'tmp/pr91042-lock-generator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Clone exact upstream object and security source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/NousResearch/hermes-agent.git hermes-agent
+          cd hermes-agent
+          git checkout --detach 533886c8b8eb67ff8b389b7f48e7d5e5d9c575b9
+          git remote add axl https://github.com/andrexibiza/hermes-agent.git
+          git fetch --no-tags axl 0384d76529a7cf18932054fce01c1701ff58d5b3
+          test "$(git rev-parse FETCH_HEAD)" = 0384d76529a7cf18932054fce01c1701ff58d5b3
+          git checkout FETCH_HEAD -- \
+            .npmrc \
+            apps/desktop/scripts/packaged-app-layout.mjs \
+            apps/desktop/scripts/packaged-app-layout.test.mjs \
+            apps/desktop/scripts/test-desktop.mjs \
+            package.json \
+            uv.lock \
+            website/package-lock.json \
+            website/package.json
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = 'apps/desktop/package.json'
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
+          manifest.devDependencies.electron = '41.10.3'
+          manifest.build.electronVersion = '41.10.3'
+          fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`)
+          NODE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Regenerate npm lock from the composed manifests
+        working-directory: hermes-agent
+        shell: bash
+        run: npm install --package-lock-only --ignore-scripts --include=optional
+      - name: Prove security and current-main graph coexist
+        working-directory: hermes-agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs')
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+          const packages = lock.packages || {}
+          const desktop = packages['apps/desktop'] || {}
+          const failures = []
+          const expect = (condition, message) => { if (!condition) failures.push(message) }
+          expect(desktop.devDependencies?.electron === '41.10.3', 'Desktop lock declaration is not Electron 41.10.3')
+          expect(desktop.devDependencies?.['@babel/core'] === '8.0.1', 'React Compiler Babel authority was lost')
+          expect(desktop.devDependencies?.['@rolldown/plugin-babel'] === '0.2.3', 'Rolldown Babel authority was lost')
+          expect(desktop.devDependencies?.['babel-plugin-react-compiler'] === '1.0.0', 'React Compiler package was lost')
+          expect(packages['node_modules/electron']?.version === '41.10.3', 'Resolved Electron package is not 41.10.3')
+          expect(packages['node_modules/@electron/get']?.version === '5.1.0', 'Resolved @electron/get is not 5.1.0')
+          expect(packages['node_modules/@electron-internal/extract-zip']?.version === '1.0.5', 'Electron internal extractor is not 1.0.5')
+          expect(!packages['node_modules/extract-zip'], 'Legacy extract-zip remains in the graph')
+          expect(packages['node_modules/sanitize-html/node_modules/nanoid']?.version === '3.3.18', 'sanitize-html Nano ID path is not 3.3.18')
+          expect(packages['node_modules/vite/node_modules/nanoid']?.version === '3.3.18', 'Vite Nano ID path is not 3.3.18')
+          if (failures.length) {
+            console.error(failures.join('\n'))
+            process.exit(1)
+          }
+          fs.writeFileSync('pr91042-lock-summary.json', `${JSON.stringify({
+            upstream: '533886c8b8eb67ff8b389b7f48e7d5e5d9c575b9',
+            source: '0384d76529a7cf18932054fce01c1701ff58d5b3',
+            electron: packages['node_modules/electron'].version,
+            electronGet: packages['node_modules/@electron/get'].version,
+            extractor: packages['node_modules/@electron-internal/extract-zip'].version,
+            reactCompiler: desktop.devDependencies['babel-plugin-react-compiler'],
+            babel: desktop.devDependencies['@babel/core'],
+            nanoidSanitizeHtml: packages['node_modules/sanitize-html/node_modules/nanoid'].version,
+            nanoidVite: packages['node_modules/vite/node_modules/nanoid'].version
+          }, null, 2)}\n`)
+          NODE
+          git diff --check
+          git diff -- apps/desktop/package.json package-lock.json > pr91042-generated-lock.diff
+          sha256sum package-lock.json apps/desktop/package.json > pr91042-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr91042-generated-lock
+          path: |
+            hermes-agent/package-lock.json
+            hermes-agent/apps/desktop/package.json
+            hermes-agent/pr91042-lock-summary.json
+            hermes-agent/pr91042-generated-lock.diff
+            hermes-agent/pr91042-sha256.txt
+          if-no-files-found: error
+          retention-days: 2
