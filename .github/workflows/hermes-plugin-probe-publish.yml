@@ -1,0 +1,30 @@
+name: Publish Hermes runtime-plugin probe fix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-plugin-probe-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@1e60f620b9541d1c2433e8f1a925dcfa90a5ab86 # v6.2.0
+        with:
+          node-version: '22.22.0'
+          cache: npm
+      - run: python scripts/publish_hermes_plugin_probe_fix.py
