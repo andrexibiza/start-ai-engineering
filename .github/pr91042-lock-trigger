@@ -1,0 +1,4 @@
+upstream=NousResearch/hermes-agent
+base=533886c8b8eb67ff8b389b7f48e7d5e5d9c575b9
+security=0384d76529a7cf18932054fce01c1701ff58d5b3
+trigger=2
