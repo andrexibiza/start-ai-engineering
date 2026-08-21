@@ -1,236 +1,44 @@
-name: Materialize Hermes Windows generation barrier
+name: Publish Hermes Windows generation barrier
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-    paths:
-      - .github/hermes-windows-generation-trigger
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
 
+concurrency:
+  group: hermes-windows-generation-publisher
+  cancel-in-progress: false
+
 jobs:
   materialize:
-    name: Compose and publish source
-    if: github.event.pull_request.head.ref == 'automation/materialize-hermes-windows-generation'
+    name: Compose and publish exact source
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       GH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
-      UPSTREAM_REPO: NousResearch/hermes-agent
-      FORK_REPO: andrexibiza/hermes-agent
-      SOURCE_BRANCH: fix/windows-update-generation-barrier
-      REVIEWED_BASE: 8794e5a21c980a0f26532cb4883284b786cb3f25
-      RECEIPT_MERGE: 1acbeed1461e619767334c74e07bb19d338996c6
-      PATCH_SHA256: cf060137934b3fef3add8022a785bfd372160414364f158b37c1aae621c51865
     outputs:
       head_sha: ${{ steps.publish.outputs.head_sha }}
       pr_number: ${{ steps.publish.outputs.pr_number }}
     steps:
-      - name: Require maintainer token
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${GH_TOKEN:-}" || {
-            echo 'ARES_REVIEW_TOKEN is unavailable.'
-            exit 1
-          }
-
-      - name: Compose reviewed implementation with current main
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+      - name: Compose, test, publish, and reconcile topology
         id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/hermes /tmp/hermes-generation
-          git clone --filter=blob:none "https://github.com/${UPSTREAM_REPO}.git" /tmp/hermes
-          cd /tmp/hermes
-          git config user.name 'Andrex Ibiza, MBA'
-          git config user.email 'andrexibiza@gmail.com'
-          git config core.autocrlf false
-          git config core.longpaths true
-          git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/${FORK_REPO}.git"
-          git fetch origin main
-          git fetch fork "${SOURCE_BRANCH}:refs/remotes/fork/patch-carrier"
-
-          current_main=$(git rev-parse origin/main)
-          echo "Current upstream main: ${current_main}"
-          git merge-base --is-ancestor "${REVIEWED_BASE}" "${current_main}"
-          git merge-base --is-ancestor "${RECEIPT_MERGE}" "${current_main}"
-
-          for part in 00 01 02 03 04 05 06 07; do
-            git show "fork/patch-carrier:.hermes-patches/windows-generation/part${part}.patch"
-          done > /tmp/windows-generation.patch
-          printf '%s  %s\n' "${PATCH_SHA256}" /tmp/windows-generation.patch | sha256sum -c -
-
-          git worktree add --detach /tmp/hermes-generation "${REVIEWED_BASE}"
-          cd /tmp/hermes-generation
-          test "$(git hash-object hermes_cli/update_cmd.py)" = '1b8c967dd757a3e8cb43d64510b1926f46bc6bb0'
-          test "$(git hash-object hermes_cli/update_lock.py)" = '964638df05636ee5cfa96e5a651ac84964b34df6'
-          test "$(git hash-object tests/hermes_cli/test_update_lock.py)" = '912d217d898eb12665a25f3bb417731a7f73c2ab'
-          git apply --check /tmp/windows-generation.patch
-          git apply /tmp/windows-generation.patch
-          git diff --check
-
-          expected=$(printf '%s\n' \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py | sort)
-          actual=$(git diff --name-only | sort)
-          test "${actual}" = "${expected}"
-
-          cd /tmp/hermes
-          git checkout -B "${SOURCE_BRANCH}" origin/main
-          git show "${REVIEWED_BASE}:hermes_cli/update_cmd.py" > /tmp/update_cmd.base.py
-          cp hermes_cli/update_cmd.py /tmp/update_cmd.current.py
-          cp /tmp/hermes-generation/hermes_cli/update_cmd.py /tmp/update_cmd.generation.py
-
-          set +e
-          git merge-file -p \
-            /tmp/update_cmd.generation.py \
-            /tmp/update_cmd.base.py \
-            /tmp/update_cmd.current.py \
-            > /tmp/update_cmd.merged.py
-          merge_status=$?
-          set -e
-          if [[ ${merge_status} -ne 0 ]]; then
-            echo 'Generation barrier conflicts with current update receipt implementation.' >&2
-            grep -nE '^(<<<<<<<|=======|>>>>>>>)' /tmp/update_cmd.merged.py || true
-            exit 1
-          fi
-          if grep -nE '^(<<<<<<<|=======|>>>>>>>)' /tmp/update_cmd.merged.py; then
-            echo 'Conflict markers survived a nominally clean merge.' >&2
-            exit 1
-          fi
-
-          cp /tmp/update_cmd.merged.py hermes_cli/update_cmd.py
-          cp /tmp/hermes-generation/hermes_cli/update_generation.py hermes_cli/update_generation.py
-          cp /tmp/hermes-generation/hermes_cli/update_generation_worker.py hermes_cli/update_generation_worker.py
-          cp /tmp/hermes-generation/hermes_cli/update_lock.py hermes_cli/update_lock.py
-          cp /tmp/hermes-generation/tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_generation.py
-          cp /tmp/hermes-generation/tests/hermes_cli/test_update_lock.py tests/hermes_cli/test_update_lock.py
-
-          git diff --check
-          actual=$(git diff --name-only | sort)
-          test "${actual}" = "${expected}"
-          grep -q 'begin_update_receipt' hermes_cli/update_cmd.py
-          grep -q 'collect_fleet_versions' hermes_cli/update_cmd.py
-          grep -q 'launch_generation_worker' hermes_cli/update_cmd.py
-          grep -q 'GenerationTransaction' hermes_cli/update_generation.py
-
-          python -m py_compile \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            hermes_cli/update_receipt.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
-          python -m pip install --disable-pip-version-check -q pytest psutil pyyaml
-          python -m pytest -q \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
-
-          python scripts/check-windows-footguns.py \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py
-
-          git add -- \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py
-          git commit -m 'fix(update): cross Windows dependency generation barrier (#88683)'
-          head_sha=$(git rev-parse HEAD)
-          git push --force fork "HEAD:${SOURCE_BRANCH}"
-
-          cat > /tmp/pr-body.md <<EOF
-          ## Summary
-
-          Implements the Windows process-generation barrier required by #88683 and Phase 2 of #91277.
-
-          The old updater process may settle source, but it may not mutate the Python environment that is executing it. After source reaches the target SHA, Hermes records a durable capability-bound transaction and hands dependency/post-update settlement to a standard-library worker outside the target venv. That worker waits for generation N to exit, realizes and verifies generation N+1, then re-enters the original command through the verified target interpreter.
-
-          This composes with merged #91283 rather than replacing it: structured update receipts and the post-restart fleet-generation matrix remain present on the same exact head.
-
-          ## Contract
-
-          - atomic complete-file update-lock publication; exactly one concurrent owner;
-          - token-bound same-generation adoption only for an explicit worker resume;
-          - durable previous/target SHA, argv, profile, gateway, snapshot, and dependency state;
-          - no dependency mutation from generation N;
-          - worker selected outside the target venv before mutation;
-          - exact checkout-generation and target-interpreter provenance checks;
-          - core, optional, lazy backend, Hermes Tools, memory-provider, and console-script verification;
-          - terminal `complete`, `partial`, and `failed` journal states;
-          - no second fetch/pull when resuming a recorded transaction;
-          - #91283 receipts/fleet verification survive the generation handoff.
-
-          ## Exact head
-
-          [\`${head_sha}\`](https://github.com/andrexibiza/hermes-agent/commit/${head_sha})
-
-          Built directly on current upstream main \`${current_main}\`. The source was reconstructed from the reviewed patch with SHA-256 \`${PATCH_SHA256}\`, three-way composed with merged #91283, and passed the generation, lock, receipt, compile, and Windows-footgun gates before publication.
-
-          ## Scope
-
-          This closes the Python dependency/process-generation slice. #91079 owns the Desktop package candidate/rollback transaction. #88764 owns secondary-provisioning authority. The central deployment-kind inventory/component planner and full real-platform failure matrix remain under #91277/#88683.
-
-          Refs #88683
-          Part of #91277
-          EOF
-
-          existing=$(gh pr list \
-            --repo "${UPSTREAM_REPO}" \
-            --head "andrexibiza:${SOURCE_BRANCH}" \
-            --state all \
-            --json number \
-            --jq '.[0].number // empty')
-          if [[ -z "${existing}" ]]; then
-            pr_url=$(gh pr create \
-              --repo "${UPSTREAM_REPO}" \
-              --head "andrexibiza:${SOURCE_BRANCH}" \
-              --base main \
-              --title 'fix(update): cross the Windows process-generation barrier' \
-              --body-file /tmp/pr-body.md)
-            pr_number=${pr_url##*/}
-          else
-            pr_number=${existing}
-            gh pr reopen "${pr_number}" --repo "${UPSTREAM_REPO}" >/dev/null 2>&1 || true
-            gh pr edit "${pr_number}" \
-              --repo "${UPSTREAM_REPO}" \
-              --title 'fix(update): cross the Windows process-generation barrier' \
-              --body-file /tmp/pr-body.md
-          fi
-
-          gh issue comment 88683 --repo "${UPSTREAM_REPO}" --body \
-            "Published the current-main Windows process-generation barrier in #${pr_number} at exact head \`${head_sha}\`. It composes with merged #91283 and is not represented as fixed-on-main until merge and upstream-object verification."
-          gh issue comment 91277 --repo "${UPSTREAM_REPO}" --body \
-            "Phase 2 implementation slice published: #${pr_number} moves Python dependency settlement into a capability-bound generation N+1 worker and preserves #91283 receipts/fleet verification. Exact head: \`${head_sha}\`."
-
-          echo "head_sha=${head_sha}" >> "${GITHUB_OUTPUT}"
-          echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+        run: python scripts/publish_hermes_windows_generation.py
 
   windows-verify:
-    name: Verify exact source head on Windows
+    name: Verify exact published head on Windows
     needs: materialize
+    if: needs.materialize.outputs.head_sha != ''
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
-      FORK_REPO: andrexibiza/hermes-agent
-      UPSTREAM_REPO: NousResearch/hermes-agent
       HEAD_SHA: ${{ needs.materialize.outputs.head_sha }}
       PR_NUMBER: ${{ needs.materialize.outputs.pr_number }}
     steps:
@@ -238,41 +46,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone "https://github.com/${FORK_REPO}.git" /tmp/hermes
-          cd /tmp/hermes
+          git clone https://github.com/andrexibiza/hermes-agent.git C:/hermes
+          cd C:/hermes
           git checkout --detach "${HEAD_SHA}"
           test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
-
-      - name: Run Windows exact-head gates
+      - name: Run native-Windows exact-head gates
         shell: bash
         run: |
           set -euo pipefail
-          cd /tmp/hermes
-          python -m pip install --disable-pip-version-check -q pytest psutil pyyaml
-          python -m py_compile \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            hermes_cli/update_receipt.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
-          python -m pytest -q \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
-          python scripts/check-windows-footguns.py \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py
-
-      - name: Post Windows receipt
+          cd C:/hermes
+          python -m pip install --disable-pip-version-check -q pytest==9.1.1 psutil==7.2.2 python-dotenv==1.2.2 pyyaml==6.0.3 ruff==0.15.10
+          python -m py_compile hermes_cli/update_cmd.py hermes_cli/update_generation.py hermes_cli/update_generation_worker.py hermes_cli/update_lock.py hermes_cli/update_receipt.py tests/hermes_cli/test_update_gateway_runtime_intent.py tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_lock.py tests/hermes_cli/test_update_receipt.py
+          python -m ruff check hermes_cli/update_cmd.py hermes_cli/update_generation.py hermes_cli/update_generation_worker.py hermes_cli/update_lock.py tests/hermes_cli/test_update_gateway_runtime_intent.py tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_lock.py
+          HERMES_PYTHON="$(command -v python)" scripts/run_tests.sh tests/hermes_cli/test_update_gateway_runtime_intent.py tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_lock.py tests/hermes_cli/test_update_receipt.py -q
+          python scripts/check-windows-footguns.py hermes_cli/update_cmd.py hermes_cli/update_generation.py hermes_cli/update_generation_worker.py hermes_cli/update_lock.py tests/hermes_cli/test_update_gateway_runtime_intent.py tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_lock.py
+      - name: Post native-Windows receipt
         shell: bash
         run: |
           set -euo pipefail
-          gh issue comment "${PR_NUMBER}" --repo "${UPSTREAM_REPO}" --body \
-            "Windows exact-head verification passed for \`${HEAD_SHA}\` in [run ${GITHUB_RUN_ID}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). This receipt covers the generation, lock, update-receipt, compile, and Windows-footgun gates; upstream CI/Docker/Nix remain independently required."
+          gh issue comment "${PR_NUMBER}" --repo NousResearch/hermes-agent --body "Native Windows exact-head verification passed for \`${HEAD_SHA}\` in [run ${GITHUB_RUN_ID}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). Receipt covers generation, lock, update-receipt, stopped-gateway intent, compile, Ruff, and Windows-footgun gates. Upstream CI/Docker/Nix remain independently required."
