@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -14,6 +16,9 @@ concurrency:
 
 jobs:
   publish:
+    if: >-
+      github.event_name != 'issues' ||
+      github.event.issue.title == '[run] Publish Hermes runtime-plugin probe fix'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
