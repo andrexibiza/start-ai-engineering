@@ -1,30 +1,32 @@
-name: Materialize Hermes Windows generation barrier
+name: Publish Hermes Windows generation barrier
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-    paths:
-      - .github/hermes-windows-generation-trigger
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
 
 jobs:
   materialize:
-    name: Compose and publish source
-    if: github.event.pull_request.head.ref == 'automation/materialize-hermes-windows-generation'
+    name: Compose and publish exact source
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       GH_TOKEN: ${{ secrets.ARES_REVIEW_TOKEN }}
       UPSTREAM_REPO: NousResearch/hermes-agent
       FORK_REPO: andrexibiza/hermes-agent
-      SOURCE_BRANCH: fix/windows-update-generation-barrier
-      REVIEWED_BASE: 8794e5a21c980a0f26532cb4883284b786cb3f25
+      EVIDENCE_BRANCH: ci/windows-generation-source-artifact
+      EVIDENCE_COMMIT: 03d6ed88760566635aee3f3267c71ac3021bbef1
+      SOURCE_BRANCH: fix/windows-update-generation-barrier-v2
+      REVIEWED_BASE: fcbd1076a93841fa88855acce810e342a5b78101
       RECEIPT_MERGE: 1acbeed1461e619767334c74e07bb19d338996c6
-      PATCH_SHA256: cf060137934b3fef3add8022a785bfd372160414364f158b37c1aae621c51865
+      EXPECTED_PATCH_BLOB: 576af882db8851413af01f4e89195ffe858dbaab
+      EXPECTED_PATCH_SHA256: 418dcfb39d3edd4ed29b8cc7435eda010bef3ed8e6925837dafa8e42754118a9
+      EXPECTED_PATCH_BYTES: '79046'
     outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
       head_sha: ${{ steps.publish.outputs.head_sha }}
       pr_number: ${{ steps.publish.outputs.pr_number }}
     steps:
@@ -33,159 +35,322 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || {
-            echo 'ARES_REVIEW_TOKEN is unavailable.'
+            echo 'ARES_REVIEW_TOKEN is unavailable.' >&2
             exit 1
           }
 
-      - name: Compose reviewed implementation with current main
-        id: publish
+      - name: Enforce one-shot publication
+        id: check
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/hermes /tmp/hermes-generation
+          existing=$(gh pr list \
+            --repo "${UPSTREAM_REPO}" \
+            --head "andrexibiza:${SOURCE_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [[ -n "${existing}" ]]; then
+            echo "Implementation PR #${existing} already exists; publisher is complete."
+            echo 'should_run=false' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'should_run=true' >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Compose, verify, and publish
+        id: publish
+        if: steps.check.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/hermes /tmp/reviewed-base /tmp/reviewed-source
           git clone --filter=blob:none "https://github.com/${UPSTREAM_REPO}.git" /tmp/hermes
           cd /tmp/hermes
-          git config user.name 'Andrex Ibiza, MBA'
-          git config user.email 'andrexibiza@gmail.com'
+          git config user.name 'Axl Ibiza'
+          git config user.email '84248988+andrexibiza@users.noreply.github.com'
           git config core.autocrlf false
           git config core.longpaths true
           git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/${FORK_REPO}.git"
-          git fetch origin main
-          git fetch fork "${SOURCE_BRANCH}:refs/remotes/fork/patch-carrier"
+          git fetch --no-tags origin main
+          git fetch --no-tags fork \
+            "+refs/heads/${EVIDENCE_BRANCH}:refs/remotes/fork/evidence"
 
           current_main=$(git rev-parse origin/main)
+          evidence_head=$(git rev-parse refs/remotes/fork/evidence)
           echo "Current upstream main: ${current_main}"
+          echo "Evidence branch head: ${evidence_head}"
+          git cat-file -e "${EVIDENCE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "${EVIDENCE_COMMIT}" "${evidence_head}"
           git merge-base --is-ancestor "${REVIEWED_BASE}" "${current_main}"
           git merge-base --is-ancestor "${RECEIPT_MERGE}" "${current_main}"
 
-          for part in 00 01 02 03 04 05 06 07; do
-            git show "fork/patch-carrier:.hermes-patches/windows-generation/part${part}.patch"
-          done > /tmp/windows-generation.patch
-          printf '%s  %s\n' "${PATCH_SHA256}" /tmp/windows-generation.patch | sha256sum -c -
+          git show \
+            "${EVIDENCE_COMMIT}:.hermes-patches/windows-generation/source.patch" \
+            > /tmp/windows-generation.patch
+          test "$(git hash-object /tmp/windows-generation.patch)" = "${EXPECTED_PATCH_BLOB}"
+          test "$(sha256sum /tmp/windows-generation.patch | cut -d' ' -f1)" = "${EXPECTED_PATCH_SHA256}"
+          test "$(wc -c < /tmp/windows-generation.patch)" -eq "${EXPECTED_PATCH_BYTES}"
 
-          git worktree add --detach /tmp/hermes-generation "${REVIEWED_BASE}"
-          cd /tmp/hermes-generation
-          test "$(git hash-object hermes_cli/update_cmd.py)" = '1b8c967dd757a3e8cb43d64510b1926f46bc6bb0'
-          test "$(git hash-object hermes_cli/update_lock.py)" = '964638df05636ee5cfa96e5a651ac84964b34df6'
-          test "$(git hash-object tests/hermes_cli/test_update_lock.py)" = '912d217d898eb12665a25f3bb417731a7f73c2ab'
-          git apply --check /tmp/windows-generation.patch
-          git apply /tmp/windows-generation.patch
-          git diff --check
+          git worktree add --detach /tmp/reviewed-base "${REVIEWED_BASE}"
+          git worktree add --detach /tmp/reviewed-source "${REVIEWED_BASE}"
+          git -C /tmp/reviewed-source apply --index --unidiff-zero --check \
+            /tmp/windows-generation.patch
+          git -C /tmp/reviewed-source apply --index --unidiff-zero \
+            /tmp/windows-generation.patch
+          git -C /tmp/reviewed-source diff --cached --check
 
-          expected=$(printf '%s\n' \
+          reviewed_paths=$(printf '%s\n' \
             hermes_cli/update_cmd.py \
             hermes_cli/update_generation.py \
             hermes_cli/update_generation_worker.py \
             hermes_cli/update_lock.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py | sort)
-          actual=$(git diff --name-only | sort)
-          test "${actual}" = "${expected}"
+          test "$(git -C /tmp/reviewed-source diff --cached --name-only | sort)" = "${reviewed_paths}"
 
-          cd /tmp/hermes
           git checkout -B "${SOURCE_BRANCH}" origin/main
-          git show "${REVIEWED_BASE}:hermes_cli/update_cmd.py" > /tmp/update_cmd.base.py
-          cp hermes_cli/update_cmd.py /tmp/update_cmd.current.py
-          cp /tmp/hermes-generation/hermes_cli/update_cmd.py /tmp/update_cmd.generation.py
 
-          set +e
-          git merge-file -p \
-            /tmp/update_cmd.generation.py \
-            /tmp/update_cmd.base.py \
-            /tmp/update_cmd.current.py \
-            > /tmp/update_cmd.merged.py
-          merge_status=$?
-          set -e
-          if [[ ${merge_status} -ne 0 ]]; then
-            echo 'Generation barrier conflicts with current update receipt implementation.' >&2
-            grep -nE '^(<<<<<<<|=======|>>>>>>>)' /tmp/update_cmd.merged.py || true
-            exit 1
-          fi
-          if grep -nE '^(<<<<<<<|=======|>>>>>>>)' /tmp/update_cmd.merged.py; then
-            echo 'Conflict markers survived a nominally clean merge.' >&2
-            exit 1
-          fi
+          for path in \
+            hermes_cli/update_cmd.py \
+            hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_lock.py; do
+            mkdir -p "$(dirname "/tmp/merged-${path}")"
+            set +e
+            git merge-file -p \
+              "/tmp/reviewed-source/${path}" \
+              "/tmp/reviewed-base/${path}" \
+              "${path}" > "/tmp/merged-${path}"
+            merge_status=$?
+            set -e
+            test "${merge_status}" -eq 0
+            if grep -nE '^(<<<<<<<|=======|>>>>>>>)' "/tmp/merged-${path}"; then
+              echo "Three-way composition left conflict markers in ${path}." >&2
+              exit 1
+            fi
+            cp "/tmp/merged-${path}" "${path}"
+          done
 
-          cp /tmp/update_cmd.merged.py hermes_cli/update_cmd.py
-          cp /tmp/hermes-generation/hermes_cli/update_generation.py hermes_cli/update_generation.py
-          cp /tmp/hermes-generation/hermes_cli/update_generation_worker.py hermes_cli/update_generation_worker.py
-          cp /tmp/hermes-generation/hermes_cli/update_lock.py hermes_cli/update_lock.py
-          cp /tmp/hermes-generation/tests/hermes_cli/test_update_generation.py tests/hermes_cli/test_update_generation.py
-          cp /tmp/hermes-generation/tests/hermes_cli/test_update_lock.py tests/hermes_cli/test_update_lock.py
+          for path in \
+            hermes_cli/update_generation.py \
+            hermes_cli/update_generation_worker.py \
+            tests/hermes_cli/test_update_generation.py; do
+            if git ls-files --error-unmatch "${path}" >/dev/null 2>&1; then
+              echo "Current main now owns ${path}; reviewed source requires explicit reconciliation." >&2
+              exit 1
+            fi
+            cp "/tmp/reviewed-source/${path}" "${path}"
+          done
 
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('hermes_cli/update_cmd.py')
+          text = path.read_text(encoding='utf-8')
+
+          start = text.index('    if not running_pids:\n', text.index('def _pause_windows_gateways_for_update'))
+          end = text.index('    profile_processes = {}\n', start)
+          replacement = '''    if not running_pids:
+              # Preserve observed runtime state, not installation/configuration
+              # state. A Scheduled Task or Startup entry proves only that
+              # autostart is configured; it does not prove the gateway was
+              # running when this update began. With no observed process there
+              # is nothing to pause and therefore nothing to resume.
+              return None
+
+          '''
+          text = text[:start] + replacement + text[end:]
+
+          old = '''    profiles = token.get("profiles") or {}
+              unmapped = token.get("unmapped") or []
+              cold_start = bool(token.get("cold_start_if_installed"))
+              if not profiles and not any(u.get("argv") for u in unmapped):
+                  if cold_start:
+                      _m()._cold_start_windows_gateway_after_update()
+                  return
+          '''
+          new = '''    profiles = token.get("profiles") or {}
+              unmapped = token.get("unmapped") or []
+              if not profiles and not any(u.get("argv") for u in unmapped):
+                  # Resume only process generations this updater positively
+                  # observed and paused. Never infer runtime intent from an
+                  # installed autostart entry or a legacy cold-start token: an
+                  # explicitly stopped gateway must stay stopped, including
+                  # after an early update refusal.
+                  return
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one resume cold-start block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          if 'cold_start_if_installed' in text[text.index('def _resume_windows_gateways_after_update'):text.index('def _discard_lockfile_churn')]:
+              raise SystemExit('legacy cold-start branch survived resume-path rewrite')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cat > tests/hermes_cli/test_update_gateway_runtime_intent.py <<'PY'
+          """Windows updater preserves observed gateway runtime intent.
+
+          An installed Scheduled Task or Startup entry is configuration, not
+          proof that its gateway process was running. The updater may resume
+          only generations it positively observed and paused.
+          """
+
+          from __future__ import annotations
+
+          from unittest.mock import patch
+
+          from hermes_cli import main as cli_main
+
+
+          @patch.object(cli_main, "_is_windows", return_value=True)
+          def test_installed_but_stopped_gateway_is_not_scheduled_for_resume(
+              _win,
+              monkeypatch,
+          ):
+              import hermes_cli.gateway as gateway_mod
+              from hermes_cli import gateway_windows
+
+              monkeypatch.setattr(gateway_mod, "find_gateway_pids", lambda **_kwargs: [])
+
+              def installation_state_is_not_runtime_state():
+                  raise AssertionError(
+                      "pause path must not consult installed autostart state"
+                  )
+
+              monkeypatch.setattr(
+                  gateway_windows,
+                  "is_installed",
+                  installation_state_is_not_runtime_state,
+              )
+
+              assert cli_main._pause_windows_gateways_for_update() is None
+
+
+          @patch.object(cli_main, "_is_windows", return_value=True)
+          def test_legacy_cold_start_token_cannot_resurrect_stopped_gateway(
+              _win,
+              monkeypatch,
+          ):
+              calls: list[str] = []
+              monkeypatch.setattr(
+                  cli_main,
+                  "_refresh_windows_gateway_launchers",
+                  lambda: calls.append("refresh"),
+              )
+              monkeypatch.setattr(
+                  cli_main,
+                  "_cold_start_windows_gateway_after_update",
+                  lambda: calls.append("cold-start"),
+              )
+              token = {
+                  "resume_needed": True,
+                  "profiles": {},
+                  "unmapped_pids": [],
+                  "unmapped": [],
+                  "cold_start_if_installed": True,
+              }
+
+              cli_main._resume_windows_gateways_after_update(token)
+
+              assert token["resume_needed"] is False
+              assert calls == ["refresh"]
+          PY
+
+          expected_paths=$(printf '%s\n' \
+            hermes_cli/update_cmd.py \
+            hermes_cli/update_generation.py \
+            hermes_cli/update_generation_worker.py \
+            hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
+            tests/hermes_cli/test_update_generation.py \
+            tests/hermes_cli/test_update_lock.py | sort)
           git diff --check
-          actual=$(git diff --name-only | sort)
-          test "${actual}" = "${expected}"
+          test "$(git diff --name-only | sort)" = "${expected_paths}"
           grep -q 'begin_update_receipt' hermes_cli/update_cmd.py
           grep -q 'collect_fleet_versions' hermes_cli/update_cmd.py
-          grep -q 'launch_generation_worker' hermes_cli/update_cmd.py
+          grep -q 'begin_dependency_handoff' hermes_cli/update_cmd.py
+          grep -q 'settlement_partial_reasons' hermes_cli/update_cmd.py
           grep -q 'GenerationTransaction' hermes_cli/update_generation.py
 
+          python -m pip install --disable-pip-version-check -q \
+            pytest==9.1.1 psutil==7.2.2 python-dotenv==1.2.2 \
+            pyyaml==6.0.3 ruff==0.15.10
           python -m py_compile \
             hermes_cli/update_cmd.py \
             hermes_cli/update_generation.py \
             hermes_cli/update_generation_worker.py \
             hermes_cli/update_lock.py \
             hermes_cli/update_receipt.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py \
             tests/hermes_cli/test_update_receipt.py
-          python -m pip install --disable-pip-version-check -q pytest psutil pyyaml
-          python -m pytest -q \
+          python -m ruff check \
+            hermes_cli/update_cmd.py \
+            hermes_cli/update_generation.py \
+            hermes_cli/update_generation_worker.py \
+            hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
+            tests/hermes_cli/test_update_generation.py \
+            tests/hermes_cli/test_update_lock.py
+          HERMES_PYTHON="$(command -v python)" scripts/run_tests.sh \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
-
+            tests/hermes_cli/test_update_receipt.py \
+            -q
           python scripts/check-windows-footguns.py \
             hermes_cli/update_cmd.py \
             hermes_cli/update_generation.py \
             hermes_cli/update_generation_worker.py \
             hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py
 
-          git add -- \
-            hermes_cli/update_cmd.py \
-            hermes_cli/update_generation.py \
-            hermes_cli/update_generation_worker.py \
-            hermes_cli/update_lock.py \
-            tests/hermes_cli/test_update_generation.py \
-            tests/hermes_cli/test_update_lock.py
-          git commit -m 'fix(update): cross Windows dependency generation barrier (#88683)'
+          git add -- ${expected_paths}
+          git commit -m 'fix(update): cross the Windows process-generation barrier (#88683)'
           head_sha=$(git rev-parse HEAD)
           git push --force fork "HEAD:${SOURCE_BRANCH}"
 
           cat > /tmp/pr-body.md <<EOF
           ## Summary
 
-          Implements the Windows process-generation barrier required by #88683 and Phase 2 of #91277.
+          Implements the Windows process-generation barrier required by #88683 and Phase 2 of #91277, composed with the merged structured-receipt and fleet-generation work from #91283.
 
-          The old updater process may settle source, but it may not mutate the Python environment that is executing it. After source reaches the target SHA, Hermes records a durable capability-bound transaction and hands dependency/post-update settlement to a standard-library worker outside the target venv. That worker waits for generation N to exit, realizes and verifies generation N+1, then re-enters the original command through the verified target interpreter.
+          Generation N may settle source, but it may not mutate or certify generation N+1 while still executing from the environment being replaced. Hermes now records a durable capability-bound transaction and hands dependency/post-update settlement to a standard-library worker outside the target venv. The worker waits for generation N to exit, realizes and verifies generation N+1, and re-enters the original command through the verified target interpreter.
 
-          This composes with merged #91283 rather than replacing it: structured update receipts and the post-restart fleet-generation matrix remain present on the same exact head.
+          This head also closes the field-reproduced gateway-intent regression: an installed Scheduled Task is configuration, not proof that a gateway was running. The updater resumes only process generations it positively observed and paused. An explicitly stopped gateway therefore remains stopped, including when the update refuses before mutation.
 
           ## Contract
 
-          - atomic complete-file update-lock publication; exactly one concurrent owner;
-          - token-bound same-generation adoption only for an explicit worker resume;
+          - atomic complete-file update-lock publication with one concurrent owner;
+          - capability-bound same-generation adoption only for an explicit worker resume;
           - durable previous/target SHA, argv, profile, gateway, snapshot, and dependency state;
-          - no dependency mutation from generation N;
+          - no Python dependency mutation from generation N;
           - worker selected outside the target venv before mutation;
           - exact checkout-generation and target-interpreter provenance checks;
           - core, optional, lazy backend, Hermes Tools, memory-provider, and console-script verification;
-          - terminal `complete`, `partial`, and `failed` journal states;
+          - terminal \`complete\`, \`partial\`, and \`failed\` journal states;
           - no second fetch/pull when resuming a recorded transaction;
-          - #91283 receipts/fleet verification survive the generation handoff.
+          - #91283 receipts and fleet verification survive the generation handoff;
+          - installed autostart state never fabricates a runtime-generation resume obligation.
+
+          ## Field reproduction closed
+
+          On Windows, \`hermes gateway stop && hermes update\` could refuse on lingering Desktop backends and then print \`Gateway started via cold-start after update\`. The finalizer inferred liveness from \`gateway_windows.is_installed()\`, resurrecting a service the operator had explicitly stopped. The regression tests lock both the normal path and legacy-token compatibility path.
 
           ## Exact head
 
           [\`${head_sha}\`](https://github.com/andrexibiza/hermes-agent/commit/${head_sha})
 
-          Built directly on current upstream main \`${current_main}\`. The source was reconstructed from the reviewed patch with SHA-256 \`${PATCH_SHA256}\`, three-way composed with merged #91283, and passed the generation, lock, receipt, compile, and Windows-footgun gates before publication.
+          Built directly on current upstream \`main\` at \`${current_main}\`. The generation source was reconstructed from Git blob \`${EXPECTED_PATCH_BLOB}\` / SHA-256 \`${EXPECTED_PATCH_SHA256}\`, three-way composed with current main, then passed focused generation, lock, receipt, runtime-intent, compile, Ruff, and Windows-footgun gates before publication. Native Windows verification runs against the exact published head.
 
-          ## Scope
+          ## Interlocks
 
-          This closes the Python dependency/process-generation slice. #91079 owns the Desktop package candidate/rollback transaction. #88764 owns secondary-provisioning authority. The central deployment-kind inventory/component planner and full real-platform failure matrix remain under #91277/#88683.
+          - #91079 owns the Desktop package candidate/rollback transaction.
+          - #91316 owns authoritative deployment-plan admission.
+          - #88764 owns secondary Desktop provisioning authority.
+          - #91283 owns structured receipts and post-restart fleet-generation verification.
 
           Refs #88683
           Part of #91277
@@ -215,16 +380,17 @@ jobs:
           fi
 
           gh issue comment 88683 --repo "${UPSTREAM_REPO}" --body \
-            "Published the current-main Windows process-generation barrier in #${pr_number} at exact head \`${head_sha}\`. It composes with merged #91283 and is not represented as fixed-on-main until merge and upstream-object verification."
+            "Published the current-main Windows process-generation barrier in #${pr_number} at exact head \`${head_sha}\`. It composes with merged #91283 and preserves stopped-gateway runtime intent; no fixed-on-main claim is made before merge and upstream-object verification."
           gh issue comment 91277 --repo "${UPSTREAM_REPO}" --body \
-            "Phase 2 implementation slice published: #${pr_number} moves Python dependency settlement into a capability-bound generation N+1 worker and preserves #91283 receipts/fleet verification. Exact head: \`${head_sha}\`."
+            "Phase 2 implementation slice published in #${pr_number}: capability-bound N→N+1 dependency settlement, exact generation verification, and observed-only gateway resume semantics. Exact head: \`${head_sha}\`."
 
           echo "head_sha=${head_sha}" >> "${GITHUB_OUTPUT}"
           echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
 
   windows-verify:
-    name: Verify exact source head on Windows
+    name: Verify exact published head on Windows
     needs: materialize
+    if: needs.materialize.outputs.should_run == 'true' && needs.materialize.outputs.head_sha != ''
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -243,36 +409,50 @@ jobs:
           git checkout --detach "${HEAD_SHA}"
           test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
 
-      - name: Run Windows exact-head gates
+      - name: Run native-Windows exact-head gates
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/hermes
-          python -m pip install --disable-pip-version-check -q pytest psutil pyyaml
+          python -m pip install --disable-pip-version-check -q \
+            pytest==9.1.1 psutil==7.2.2 python-dotenv==1.2.2 \
+            pyyaml==6.0.3 ruff==0.15.10
           python -m py_compile \
             hermes_cli/update_cmd.py \
             hermes_cli/update_generation.py \
             hermes_cli/update_generation_worker.py \
             hermes_cli/update_lock.py \
             hermes_cli/update_receipt.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py \
             tests/hermes_cli/test_update_receipt.py
-          python -m pytest -q \
+          python -m ruff check \
+            hermes_cli/update_cmd.py \
+            hermes_cli/update_generation.py \
+            hermes_cli/update_generation_worker.py \
+            hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
+            tests/hermes_cli/test_update_generation.py \
+            tests/hermes_cli/test_update_lock.py
+          HERMES_PYTHON="$(command -v python)" scripts/run_tests.sh \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py \
-            tests/hermes_cli/test_update_receipt.py
+            tests/hermes_cli/test_update_receipt.py \
+            -q
           python scripts/check-windows-footguns.py \
             hermes_cli/update_cmd.py \
             hermes_cli/update_generation.py \
             hermes_cli/update_generation_worker.py \
             hermes_cli/update_lock.py \
+            tests/hermes_cli/test_update_gateway_runtime_intent.py \
             tests/hermes_cli/test_update_generation.py \
             tests/hermes_cli/test_update_lock.py
 
-      - name: Post Windows receipt
+      - name: Post native-Windows receipt
         shell: bash
         run: |
           set -euo pipefail
           gh issue comment "${PR_NUMBER}" --repo "${UPSTREAM_REPO}" --body \
-            "Windows exact-head verification passed for \`${HEAD_SHA}\` in [run ${GITHUB_RUN_ID}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). This receipt covers the generation, lock, update-receipt, compile, and Windows-footgun gates; upstream CI/Docker/Nix remain independently required."
+            "Native Windows exact-head verification passed for \`${HEAD_SHA}\` in [run ${GITHUB_RUN_ID}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). Receipt covers generation, lock, update-receipt, stopped-gateway intent, compile, Ruff, and Windows-footgun gates. Upstream CI/Docker/Nix remain independently required."
