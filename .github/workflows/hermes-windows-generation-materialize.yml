@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -15,6 +17,9 @@ concurrency:
 jobs:
   materialize:
     name: Compose and publish exact source
+    if: >-
+      github.event_name != 'issues' ||
+      github.event.issue.title == '[run] Publish Hermes Windows generation barrier'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
